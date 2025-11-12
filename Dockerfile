@@ -4,10 +4,12 @@ FROM python:3.11-slim
 WORKDIR /app
 COPY . /app
 
+# Install dependencies
 RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
-
-# Ensure timezone and schedule runs correctly
+# Set timezone and expose port for Render detection
 ENV TZ=Asia/Kolkata
+ENV PORT=10000
+EXPOSE 10000
 
 CMD ["python", "bot.py"]

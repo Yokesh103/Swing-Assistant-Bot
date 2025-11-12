@@ -23,6 +23,21 @@ from nsepython import nse_eq
 import telebot
 from ai_probability import load_ai_model, predict_prob
 
+# --- HEARTBEAT WEB SERVER (for Render free plan) ---
+from flask import Flask
+import threading
+
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Swing Assistant Pro is running!"  # This keeps Render service alive
+
+def run_web_server():
+    # Render expects a running web port; Flask will open one
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+
+
 # ---------------- CONFIG ----------------
 TELEGRAM_BOT_TOKEN = "8015781832:AAELS7w7iJF66a2bKn8vUwHIU6nPU4D0mR4"
 TELEGRAM_CHAT_ID = 1004047511
@@ -245,4 +260,6 @@ def bot_thread():
 if __name__ == "__main__":
     ensure_excel()
     threading.Thread(target=scheduler_thread, daemon=True).start()
+    threading.Thread(target=run_web_server, daemon=True).start()  # ✅ keeps Render port open
     bot_thread()
+
