@@ -1,0 +1,10 @@
+pandas
+yfinance
+ta
+schedule
+pyTelegramBotAPI
+openpyxl
+requests
+nsepython
+joblib
+scikit-learn
