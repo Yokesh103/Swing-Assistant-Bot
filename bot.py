@@ -31,6 +31,24 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
+    return "Swing Assistant Pro is running!"
+
+# --- ADD BELOW ---
+from flask import request
+import telebot
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    json_str = request.get_data().decode("UTF-8")
+    update = telebot.types.Update.de_json(json_str)
+    bot.process_new_updates([update])
+    return "OK", 200
+# --- END ADDITION ---
+
+
+
+@app.route("/")
+def home():
     return "Swing Assistant Pro is running!"  # This keeps Render service alive
 
 def run_web_server():
@@ -256,10 +274,20 @@ def bot_thread():
             time.sleep(5)
             continue
 
-# ---------------- MAIN ----------------
 if __name__ == "__main__":
     ensure_excel()
     threading.Thread(target=scheduler_thread, daemon=True).start()
-    threading.Thread(target=run_web_server, daemon=True).start()  # ✅ keeps Render port open
-    bot_thread()
+
+    # --- Webhook mode for Render ---
+    RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://swing-assistant-bot.onrender.com")
+    WEBHOOK_URL = f"{RENDER_URL}/webhook"
+
+    bot.remove_webhook()
+    bot.set_webhook(url=WEBHOOK_URL)
+    print(f"[INFO] Webhook set: {WEBHOOK_URL}")
+
+    # Run Flask web server for Render
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+
+
 
