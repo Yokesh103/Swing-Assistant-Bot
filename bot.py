@@ -184,9 +184,17 @@ if __name__ == "__main__":
     ensure_excel()
     threading.Thread(target=scheduler_thread, daemon=True).start()
 
-    # --- Webhook mode for Render ---
+# --- Webhook mode for Render ---
 RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://swing-assistant-bot.onrender.com")
 WEBHOOK_URL = f"{RENDER_URL}/webhook"
+
+bot.remove_webhook()
+bot.set_webhook(url=WEBHOOK_URL)
+print(f"[INFO] Webhook set: {WEBHOOK_URL}")
+
+# Run Flask web server (keeps Render service alive)
+app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+"
 
 bot.remove_webhook()
 bot.set_webhook(url=WEBHOOK_URL)
