@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Swing Assistant Pro - NSE + AI + Auto Reports + Qty Tracking + Full Status + Auto Backup
-Author: Yokesh | Version: 4.2 (Render Webhook Edition)
+Author: Yokesh | Version: 4.3 (Render Webhook Edition - Full Commands)
 """
 
 import os
@@ -37,7 +37,6 @@ def home():
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    """Receives updates directly from Telegram"""
     json_str = request.get_data().decode("UTF-8")
     update = telebot.types.Update.de_json(json_str)
     bot.process_new_updates([update])
@@ -89,20 +88,111 @@ def start_help_cmd(m):
     msg = (
         "👋 *Welcome to Swing Assistant Pro (NSE)*\n\n"
         "💡 *Commands:*\n"
-        "• `/go` — Start tracking\n"
+        "• `/go` — Start live tracking\n"
         "• `/pause` — Pause tracking\n"
         "• `/check` — Bot status\n"
-        "• `/list` — Show holdings\n"
+        "• `/track SYMBOL BUY TARGET SL QTY` — Add new stock\n"
+        "• `/update SYMBOL TARGET SL [QTY]` — Update values\n"
+        "• `/remove SYMBOL` — Remove stock\n"
+        "• `/info SYMBOL` — Show one stock\n"
+        "• `/list` — Show all holdings\n"
         "• `/today` — Daily P/L summary\n"
         "• `/statusfull` or `/sf` — Full bot health\n"
-        "🌇 Auto summaries & backups run daily."
+        "• `/ping` — Check bot status\n\n"
+        "☀ Morning summary at 9:00 AM\n"
+        "🌇 Evening report at 3:31 PM\n"
+        "🗓 Weekly summary Saturday 4:00 PM\n"
+        "💾 Nightly backup at 11:30 PM"
     )
     bot.reply_to(m, msg)
+
+@bot.message_handler(commands=['ping'])
+def ping_cmd(m):
+    bot.reply_to(m, f"✅ Bot is alive! Server time: {datetime.now().strftime('%H:%M:%S')}")
+
+@bot.message_handler(commands=['go'])
+def go_cmd(m):
+    global tracking_active
+    tracking_active = True
+    bot.reply_to(m, "🚀 Tracking activated (every 1 minute).")
+
+@bot.message_handler(commands=['pause'])
+def pause_cmd(m):
+    global tracking_active
+    tracking_active = False
+    bot.reply_to(m, "⏸️ Tracking paused.")
 
 @bot.message_handler(commands=['check'])
 def check_cmd(m):
     state = "✅ Active" if tracking_active else "⏸️ Paused"
     bot.reply_to(m, f"📊 Bot status: {state}")
+
+@bot.message_handler(commands=['track'])
+def track_cmd(m):
+    try:
+        parts = m.text.split()
+        if len(parts) < 6:
+            bot.reply_to(m, "⚠️ Usage: /track SYMBOL BUY TARGET SL QTY")
+            return
+        _, s, b, t, sl, qty = parts[:6]
+        df = pd.read_excel(EXCEL_FILE)
+        df.loc[len(df)] = [s.upper(), float(b), float(t), float(sl),
+                           float(qty), date.today(), "🕒 Active", None, None, 0]
+        df.to_excel(EXCEL_FILE, index=False)
+        bot.reply_to(m, f"✅ Added {s.upper()} | Buy ₹{b} | Target ₹{t} | SL ₹{sl} | Qty {qty}")
+    except Exception as e:
+        bot.reply_to(m, f"❌ Error adding stock: {e}")
+
+@bot.message_handler(commands=['update'])
+def update_cmd(m):
+    try:
+        parts = m.text.split()
+        if len(parts) < 4:
+            bot.reply_to(m, "⚠️ Usage: /update SYMBOL TARGET SL [QTY]")
+            return
+        _, s, t, sl, *q = parts
+        df = pd.read_excel(EXCEL_FILE)
+        if s.upper() not in df["Stock"].values:
+            bot.reply_to(m, f"⚠️ {s.upper()} not found.")
+            return
+        df.loc[df["Stock"] == s.upper(), ["Target", "SL"]] = [float(t), float(sl)]
+        if q:
+            df.loc[df["Stock"] == s.upper(), "Qty"] = float(q[0])
+        df.to_excel(EXCEL_FILE, index=False)
+        bot.reply_to(m, f"✅ Updated {s.upper()} | Target ₹{t} | SL ₹{sl} | Qty {q[0] if q else '(unchanged)'}")
+    except Exception as e:
+        bot.reply_to(m, f"❌ Error updating stock: {e}")
+
+@bot.message_handler(commands=['remove'])
+def remove_cmd(m):
+    try:
+        _, s = m.text.split()
+        df = pd.read_excel(EXCEL_FILE)
+        df = df[df["Stock"] != s.upper()]
+        df.to_excel(EXCEL_FILE, index=False)
+        bot.reply_to(m, f"🗑️ Removed {s.upper()}")
+    except Exception as e:
+        bot.reply_to(m, f"Error removing: {e}")
+
+@bot.message_handler(commands=['info'])
+def info_cmd(m):
+    try:
+        _, s = m.text.split()
+        df = pd.read_excel(EXCEL_FILE)
+        row = df[df["Stock"] == s.upper()]
+        if row.empty:
+            bot.reply_to(m, f"⚠️ {s.upper()} not found.")
+            return
+        r = row.iloc[0]
+        msg = (
+            f"📊 *{r['Stock']}*\n"
+            f"Buy: ₹{r['Buy']} | Target: ₹{r['Target']} | SL: ₹{r['SL']}\n"
+            f"Qty: {r['Qty']} | Last: ₹{r['LastPrice']} | P/L: ₹{r['P/L']}\n"
+            f"Status: {r['Status']}"
+        )
+        bot.reply_to(m, msg)
+    except Exception as e:
+        bot.reply_to(m, f"Error: {e}")
 
 @bot.message_handler(commands=['list'])
 def list_cmd(m):
@@ -184,22 +274,12 @@ if __name__ == "__main__":
     ensure_excel()
     threading.Thread(target=scheduler_thread, daemon=True).start()
 
-# --- Webhook mode for Render ---
-RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://swing-assistant-bot.onrender.com")
-WEBHOOK_URL = f"{RENDER_URL}/webhook"
+    # --- Webhook mode for Render ---
+    RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://swing-assistant-bot.onrender.com")
+    WEBHOOK_URL = f"{RENDER_URL}/webhook"
 
-bot.remove_webhook()
-bot.set_webhook(url=WEBHOOK_URL)
-print(f"[INFO] Webhook set: {WEBHOOK_URL}")
+    bot.remove_webhook()
+    bot.set_webhook(url=WEBHOOK_URL)
+    print(f"[INFO] Webhook set: {WEBHOOK_URL}")
 
-# Run Flask web server (keeps Render service alive)
-app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
-"
-
-bot.remove_webhook()
-bot.set_webhook(url=WEBHOOK_URL)
-print(f"[INFO] Webhook set: {WEBHOOK_URL}")
-
-# Run Flask web server (keeps Render service alive)
-app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
-
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
